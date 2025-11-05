@@ -1,3 +1,4 @@
+import { ApplyValueTransformers } from 'typeorm/util/ApplyValueTransformers'
 import { ColumnMetadata } from 'typeorm/metadata/ColumnMetadata'
 import {
   dateToDateString,
@@ -13,6 +14,13 @@ export class MysqlQueryTransformer extends QueryTransformer {
   preparePersistentValue(value: any, metadata: ColumnMetadata): any {
     if (!value) {
       return value
+    }
+
+    if (metadata.transformer) {
+      value = ApplyValueTransformers.transformTo(
+        metadata.transformer,
+        value,
+      )
     }
 
     switch (metadata.type) {
@@ -63,39 +71,56 @@ export class MysqlQueryTransformer extends QueryTransformer {
 
   prepareHydratedValue(value: any, metadata: ColumnMetadata): any {
     if (value === null || value === undefined) {
-      return value
+      return metadata.transformer
+        ? ApplyValueTransformers.transformFrom(
+          metadata.transformer,
+          value,
+        )
+        : value
     }
 
     switch (metadata.type) {
       case Boolean:
-        return !!value
+        value = !!value
+        break;
       case 'datetime':
       case Date:
       case 'timestamp':
       case 'timestamp with time zone':
       case 'timestamp without time zone':
-        return typeof value === 'string' ? new Date(value + ' GMT+0') : value
+        value = typeof value === 'string' ? new Date(value + ' GMT+0') : value;
+        break;
       case 'date':
-        return dateToDateString(value)
+        value = dateToDateString(value)
+        break;
       case 'year':
-        return typeof value === 'string' ? new Date(value).getUTCFullYear() : value.getUTCFullYear()
+        value = typeof value === 'string' ? new Date(value).getUTCFullYear() : value.getUTCFullYear()
+        break;
       case 'time':
-        return value
+        value = value
+        break;
       case 'set':
       case 'simple-array':
-        return typeof value === 'string' ? stringToSimpleArray(value) : value
+        value = typeof value === 'string' ? stringToSimpleArray(value) : value
+        break;
       case 'json':
       case 'simple-json':
-        return typeof value === 'string' ? JSON.parse(value) : value
+        value = typeof value === 'string' ? JSON.parse(value) : value
+        break;
       case 'enum':
       case 'simple-enum':
         if (metadata.enum && !Number.isNaN(value) && metadata.enum.indexOf(parseInt(value, 10)) >= 0) {
-          return parseInt(value, 10)
+          value = parseInt(value, 10)
         }
-        return value
-      default:
-        return value
+        break;
     }
+
+    if (metadata.transformer)
+    value = ApplyValueTransformers.transformFrom(
+      metadata.transformer,
+        value,
+    )
+    return value;
   }
 
   protected transformQuery(query: string, parameters: any[]): string {
